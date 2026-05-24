@@ -1,449 +1,526 @@
 """
 Charts module for the Food Price Dashboard
-Contains all visualization functions
+Contains all visualization functions using interactive Plotly charts
 """
 
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
-import streamlit as st
+from plotly.subplots import make_subplots
 import numpy as np
 
-# Set style
-plt.style.use("seaborn-v0_8-darkgrid")
-sns.set_palette("husl")
+# Consistent colour sequence used across all charts
+COLORS = px.colors.qualitative.Set2
 
-# Color palette
-COLOR_PALETTE = "Set2"
+# Shared layout defaults for a clean, consistent look
+_LAYOUT = dict(
+    font=dict(family="Inter, sans-serif", size=13),
+    plot_bgcolor="rgba(0,0,0,0)",
+    paper_bgcolor="rgba(0,0,0,0)",
+    margin=dict(l=40, r=40, t=60, b=40),
+    legend=dict(bgcolor="rgba(255,255,255,0.8)", bordercolor="#ddd", borderwidth=1),
+)
 
 
-def pie_chart_distribution(df, column="category"):
-    """Pie chart showing proportional distribution of a category"""
-    fig, ax = plt.subplots(figsize=(10, 6))
-    distribution = df[column].value_counts()
-    
-    colors = sns.color_palette(COLOR_PALETTE, len(distribution))
-    wedges, texts, autotexts = ax.pie(
-        distribution.values,
-        labels=distribution.index,
-        autopct="%1.1f%%",
-        colors=colors,
-        startangle=90,
-        textprops={"fontsize": 10},
+def _empty_fig(message="No data available for selected filters"):
+    fig = go.Figure()
+    fig.add_annotation(
+        text=message, x=0.5, y=0.5, xref="paper", yref="paper",
+        showarrow=False, font=dict(size=15, color="#888"),
     )
-    
-    ax.set_title(f"Distribution of {column.capitalize()}", fontsize=14, fontweight="bold", pad=20)
-    plt.tight_layout()
+    fig.update_layout(**_LAYOUT, height=400)
     return fig
 
 
-def histogram_price_distribution(df, column="price", bins=50):
-    """Histogram displaying frequency distribution of numerical column"""
-    fig, ax = plt.subplots(figsize=(12, 6))
-    ax.hist(df[column].dropna(), bins=bins, color="#3498db", edgecolor="black", alpha=0.7)
-    
-    ax.set_xlabel(f"{column.capitalize()}", fontsize=11, fontweight="bold")
-    ax.set_ylabel("Frequency", fontsize=11, fontweight="bold")
-    ax.set_title(f"Price Distribution Histogram", fontsize=14, fontweight="bold", pad=20)
-    ax.grid(axis="y", alpha=0.3)
-    plt.tight_layout()
-    return fig
-
-
-def line_chart_trends(df, x="date", y="price", hue="commodity", max_commodities=8):
-    """Line chart showing trends over time"""
+# ---------------------------------------------------------------------------
+# 1. Pie chart – category / column distribution
+# ---------------------------------------------------------------------------
+def pie_chart_distribution(df, column="category"):
+    """Interactive pie chart showing proportional distribution."""
     if len(df) == 0:
-        fig, ax = plt.subplots(figsize=(12, 6))
-        ax.text(0.5, 0.5, "No data available", ha='center', va='center', fontsize=12)
-        return fig
-    
+        return _empty_fig()
+    distribution = df[column].value_counts().reset_index()
+    distribution.columns = [column, "count"]
+    fig = px.pie(
+        distribution,
+        names=column,
+        values="count",
+        color_discrete_sequence=COLORS,
+        hole=0.35,
+        title=f"Distribution of {column.replace('_', ' ').title()}",
+    )
+    fig.update_traces(textposition="inside", textinfo="percent+label", pull=0.02)
+    fig.update_layout(**_LAYOUT, height=420)
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 2. Histogram – price distribution
+# ---------------------------------------------------------------------------
+def histogram_price_distribution(df, column="usdprice", bins=50):
+    """Interactive histogram for price distribution."""
+    if len(df) == 0:
+        return _empty_fig()
+    fig = px.histogram(
+        df,
+        x=column,
+        nbins=bins,
+        color_discrete_sequence=["#3498db"],
+        title="Price Distribution (USD)",
+        labels={column: "USD Price", "count": "Frequency"},
+        opacity=0.80,
+    )
+    fig.update_traces(marker_line_color="white", marker_line_width=0.5)
+    fig.update_layout(**_LAYOUT, height=420,
+                      xaxis_title="Price (USD)", yaxis_title="Frequency",
+                      bargap=0.05)
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 3. Line chart – price trends over time
+# ---------------------------------------------------------------------------
+def line_chart_trends(df, x="date", y="usdprice", hue="commodity", max_commodities=8):
+    """Interactive multi-line chart of price trends."""
+    if len(df) == 0:
+        return _empty_fig()
+
     df_plot = df.copy()
     df_plot[x] = pd.to_datetime(df_plot[x])
-    
-    # Limit commodities for clarity
-    top_commodities = df_plot[hue].value_counts().head(max_commodities).index
-    df_plot = df_plot[df_plot[hue].isin(top_commodities)]
-    
+
+    top_items = df_plot[hue].value_counts().head(max_commodities).index
+    df_plot = df_plot[df_plot[hue].isin(top_items)]
+
     if len(df_plot) == 0:
-        fig, ax = plt.subplots(figsize=(12, 6))
-        ax.text(0.5, 0.5, "No data available for selected filters", ha='center', va='center', fontsize=12)
-        return fig
-    
-    fig, ax = plt.subplots(figsize=(12, 6))
-    colors = sns.color_palette(COLOR_PALETTE, len(top_commodities))
-    
-    for idx, commodity in enumerate(top_commodities):
-        df_comm = df_plot[df_plot[hue] == commodity].sort_values(x)
-        ax.plot(df_comm[x], df_comm[y], marker='o', label=commodity, 
-                color=colors[idx], linewidth=2, markersize=4, alpha=0.7)
-    
-    ax.set_xlabel("Date", fontsize=11, fontweight="bold")
-    ax.set_ylabel("Price (USD)", fontsize=11, fontweight="bold")
-    ax.set_title("Price Trends Over Time by Commodity", fontsize=14, fontweight="bold", pad=20)
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=9)
-    ax.grid(True, alpha=0.3)
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    return fig
+        return _empty_fig()
 
+    df_agg = df_plot.groupby([x, hue])[y].mean().reset_index()
 
-def bar_chart_comparison(df, x="countryiso3", y="price", aggregation="mean"):
-    """Bar chart comparing values across categories"""
-    if aggregation == "mean":
-        data = df.groupby(x)[y].mean().sort_values(ascending=False).head(15)
-    elif aggregation == "sum":
-        data = df.groupby(x)[y].sum().sort_values(ascending=False).head(15)
-    elif aggregation == "count":
-        data = df.groupby(x).size().sort_values(ascending=False).head(15)
-    
-    fig, ax = plt.subplots(figsize=(12, 6))
-    colors = sns.color_palette(COLOR_PALETTE, len(data))
-    bars = ax.bar(data.index, data.values, color=colors, edgecolor="black", alpha=0.8)
-    
-    ax.set_xlabel(x.capitalize(), fontsize=11, fontweight="bold")
-    ax.set_ylabel(f"{aggregation.capitalize()} {y.capitalize()}", fontsize=11, fontweight="bold")
-    ax.set_title(f"Average Price by {x.replace('_', ' ').capitalize()}", fontsize=14, fontweight="bold", pad=20)
-    plt.xticks(rotation=45, ha="right")
-    ax.grid(axis="y", alpha=0.3)
-    
-    # Add value labels on bars
-    for bar in bars:
-        height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height,
-                f"{height:.2f}", ha="center", va="bottom", fontsize=9)
-    
-    plt.tight_layout()
-    return fig
-
-
-def scatter_plot_relationship(df, x="price", y="usdprice"):
-    """Scatter plot showing relationship between two numerical variables"""
-    if len(df) == 0:
-        fig, ax = plt.subplots(figsize=(12, 6))
-        ax.text(0.5, 0.5, "No data available", ha="center", va="center", transform=ax.transAxes)
-        return fig
-    
-    try:
-        fig, ax = plt.subplots(figsize=(12, 6))
-        
-        # Get unique categories and assign colors
-        categories = df["category"].unique()
-        colors = sns.color_palette(COLOR_PALETTE, len(categories))
-        color_map = dict(zip(categories, colors))
-        
-        # Plot scatter for each category
-        for category in categories:
-            df_cat = df[df["category"] == category]
-            ax.scatter(
-                df_cat[x],
-                df_cat[y],
-                label=category,
-                alpha=0.6,
-                s=50,
-                color=color_map[category]
-            )
-        
-        ax.set_xlabel(f"Local Price ({x})", fontsize=11, fontweight="bold")
-        ax.set_ylabel("USD Price", fontsize=11, fontweight="bold")
-        ax.set_title("Price Relationship: Local vs USD", fontsize=14, fontweight="bold", pad=20)
-        ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left", fontsize=9)
-        ax.grid(alpha=0.3)
-        plt.tight_layout()
-        return fig
-    except Exception as e:
-        fig, ax = plt.subplots(figsize=(12, 6))
-        ax.text(0.5, 0.5, f"Unable to display scatter plot: {str(e)}", ha="center", va="center", transform=ax.transAxes)
-        return fig
-
-
-def box_plot_spread(df, y="price", x="category"):
-    """Box plot showing data spread, median, and outliers"""
-    fig, ax = plt.subplots(figsize=(12, 6))
-    
-    # Prepare data
-    categories = df[x].unique()
-    data_to_plot = [df[df[x] == cat][y].dropna() for cat in categories]
-    
-    bp = ax.boxplot(data_to_plot, labels=categories, patch_artist=True)
-    
-    # Color the boxes
-    colors = sns.color_palette(COLOR_PALETTE, len(categories))
-    for patch, color in zip(bp["boxes"], colors):
-        patch.set_facecolor(color)
-        patch.set_alpha(0.8)
-    
-    ax.set_xlabel(x.capitalize(), fontsize=11, fontweight="bold")
-    ax.set_ylabel(y.capitalize(), fontsize=11, fontweight="bold")
-    ax.set_title(f"Price Distribution by {x.capitalize()}", fontsize=14, fontweight="bold", pad=20)
-    ax.grid(axis="y", alpha=0.3)
-    plt.xticks(rotation=45, ha="right")
-    plt.tight_layout()
-    return fig
-
-
-def heatmap_correlation(df):
-    """Heatmap visualizing correlation matrix of numerical features"""
-    # Select only numerical columns
-    numerical_cols = df.select_dtypes(include=[np.number]).columns
-    corr_matrix = df[numerical_cols].corr()
-    
-    fig, ax = plt.subplots(figsize=(10, 8))
-    sns.heatmap(
-        corr_matrix,
-        annot=True,
-        fmt=".2f",
-        cmap="coolwarm",
-        center=0,
-        square=True,
-        ax=ax,
-        cbar_kws={"label": "Correlation"},
+    fig = px.line(
+        df_agg,
+        x=x,
+        y=y,
+        color=hue,
+        color_discrete_sequence=COLORS,
+        markers=True,
+        title="Average Price Trends Over Time",
+        labels={x: "Date", y: "Avg Price (USD)", hue: "Commodity"},
     )
-    ax.set_title("Correlation Matrix Heatmap", fontsize=14, fontweight="bold", pad=20)
-    plt.tight_layout()
+    fig.update_traces(line_width=2.5, marker_size=5)
+    fig.update_layout(**_LAYOUT, height=450,
+                      xaxis_title="Date", yaxis_title="Average Price (USD)",
+                      hovermode="x unified")
     return fig
 
 
-def area_chart_cumulative(df, date_col="date", value_col="price"):
-    """Area chart showing cumulative trends over time"""
+# ---------------------------------------------------------------------------
+# 4. Bar chart – comparison across categories
+# ---------------------------------------------------------------------------
+def bar_chart_comparison(df, x="countryiso3", y="usdprice", aggregation="mean"):
+    """Interactive horizontal bar chart."""
     if len(df) == 0:
-        fig = go.Figure()
-        fig.add_annotation(text="No data available", showarrow=False)
-        return fig
-    
+        return _empty_fig()
+
+    if aggregation == "mean":
+        data = df.groupby(x)[y].mean().sort_values(ascending=False).head(20).reset_index()
+        y_label = "Average Price (USD)"
+    elif aggregation == "sum":
+        data = df.groupby(x)[y].sum().sort_values(ascending=False).head(20).reset_index()
+        y_label = "Total Price (USD)"
+    else:
+        data = df.groupby(x).size().sort_values(ascending=False).head(20).reset_index()
+        data.columns = [x, y]
+        y_label = "Count"
+
+    data.columns = [x, y]
+
+    fig = px.bar(
+        data.sort_values(y),
+        x=y,
+        y=x,
+        orientation="h",
+        color=y,
+        color_continuous_scale="Blues",
+        title=f"{y_label} by {x.replace('_', ' ').title()} (Top 20)",
+        labels={x: x.replace("_", " ").title(), y: y_label},
+        text=data.sort_values(y)[y].apply(lambda v: f"${v:.2f}"),
+    )
+    fig.update_traces(textposition="outside")
+    fig.update_coloraxes(showscale=False)
+    fig.update_layout(**_LAYOUT, height=max(400, len(data) * 28),
+                      xaxis_title=y_label, yaxis_title="")
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 5. Scatter plot – local price vs USD price
+# ---------------------------------------------------------------------------
+def scatter_plot_relationship(df, x="price", y="usdprice"):
+    """Interactive scatter plot coloured by category."""
+    if len(df) == 0:
+        return _empty_fig()
+
+    sample = df.sample(min(3000, len(df)), random_state=42) if len(df) > 3000 else df
+
+    fig = px.scatter(
+        sample,
+        x=x,
+        y=y,
+        color="category",
+        color_discrete_sequence=COLORS,
+        opacity=0.6,
+        title="Local Price vs USD Price by Category",
+        labels={x: "Local Price", y: "USD Price", "category": "Category"},
+        hover_data=["commodity", "countryiso3", "market"],
+        trendline="ols",
+        trendline_scope="overall",
+    )
+    fig.update_layout(**_LAYOUT, height=450)
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 6. Box plot – price spread
+# ---------------------------------------------------------------------------
+def box_plot_spread(df, y="usdprice", x="category"):
+    """Interactive box plot with outlier hover."""
+    if len(df) == 0:
+        return _empty_fig()
+
+    fig = px.box(
+        df,
+        x=x,
+        y=y,
+        color=x,
+        color_discrete_sequence=COLORS,
+        notched=False,
+        points="outliers",
+        title=f"Price Spread by {x.replace('_', ' ').title()}",
+        labels={x: x.replace("_", " ").title(), y: "Price (USD)"},
+    )
+    fig.update_layout(**_LAYOUT, height=450,
+                      xaxis_tickangle=-30, showlegend=False)
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 7. Heatmap – correlation matrix
+# ---------------------------------------------------------------------------
+def heatmap_correlation(df):
+    """Interactive correlation heatmap."""
+    numerical_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    if len(numerical_cols) < 2:
+        return _empty_fig("Not enough numerical columns for a correlation heatmap.")
+
+    corr = df[numerical_cols].corr().round(2)
+
+    fig = px.imshow(
+        corr,
+        text_auto=True,
+        color_continuous_scale="RdBu_r",
+        zmin=-1,
+        zmax=1,
+        title="Correlation Matrix Heatmap",
+        aspect="auto",
+    )
+    fig.update_layout(**_LAYOUT, height=460)
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 8. Area chart – cumulative price trends
+# ---------------------------------------------------------------------------
+def area_chart_cumulative(df, date_col="date", value_col="usdprice"):
+    """Interactive stacked area chart of top-5 commodities over time."""
+    if len(df) == 0:
+        return _empty_fig()
+
     df_plot = df.copy()
     df_plot[date_col] = pd.to_datetime(df_plot[date_col])
-    
-    try:
-        # Group by date and commodity
-        df_agg = df_plot.groupby([date_col, "commodity"])[value_col].mean().reset_index()
-        
-        if len(df_agg) == 0:
-            fig = go.Figure()
-            fig.add_annotation(text="No data available for selected filters", showarrow=False)
-            return fig
-        
-        # Create area chart with matplotlib instead
-        fig, ax = plt.subplots(figsize=(12, 6))
-        
-        # Get top 5 commodities
-        top_commodities = df_agg["commodity"].value_counts().head(5).index
-        colors = sns.color_palette(COLOR_PALETTE, len(top_commodities))
-        
-        for idx, commodity in enumerate(top_commodities):
-            df_comm = df_agg[df_agg["commodity"] == commodity].sort_values(date_col)
-            ax.fill_between(df_comm[date_col], 0, df_comm[value_col], 
-                           label=commodity, color=colors[idx], alpha=0.6)
-        
-        ax.set_xlabel("Date", fontsize=11, fontweight="bold")
-        ax.set_ylabel("Average Price (USD)", fontsize=11, fontweight="bold")
-        ax.set_title("Cumulative Price Trends Over Time", fontsize=14, fontweight="bold", pad=20)
-        ax.legend(loc='best', fontsize=9)
-        ax.grid(True, alpha=0.3)
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        return fig
-    except Exception as e:
-        fig, ax = plt.subplots(figsize=(12, 6))
-        ax.text(0.5, 0.5, "Unable to display area chart", ha='center', va='center', fontsize=12)
-        return fig
+
+    top_5 = df_plot["commodity"].value_counts().head(5).index
+    df_plot = df_plot[df_plot["commodity"].isin(top_5)]
+
+    df_agg = df_plot.groupby([date_col, "commodity"])[value_col].mean().reset_index()
+
+    fig = px.area(
+        df_agg,
+        x=date_col,
+        y=value_col,
+        color="commodity",
+        color_discrete_sequence=COLORS,
+        title="Cumulative Price Trends – Top 5 Commodities",
+        labels={date_col: "Date", value_col: "Avg Price (USD)", "commodity": "Commodity"},
+    )
+    fig.update_layout(**_LAYOUT, height=450,
+                      xaxis_title="Date", yaxis_title="Average Price (USD)",
+                      hovermode="x unified")
+    return fig
 
 
+# ---------------------------------------------------------------------------
+# 9. Count / frequency bar chart
+# ---------------------------------------------------------------------------
 def count_plot_frequency(df, column="commodity", top_n=15):
-    """Count plot showing frequency count of categorical variables"""
-    data = df[column].value_counts().head(top_n)
-    
-    fig, ax = plt.subplots(figsize=(12, 6))
-    colors = sns.color_palette(COLOR_PALETTE, len(data))
-    bars = ax.barh(range(len(data)), data.values, color=colors, edgecolor="black", alpha=0.8)
-    ax.set_yticks(range(len(data)))
-    ax.set_yticklabels(data.index)
-    ax.set_xlabel("Count", fontsize=11, fontweight="bold")
-    ax.set_ylabel(column.capitalize(), fontsize=11, fontweight="bold")
-    ax.set_title(f"Frequency Count of {column.capitalize()}", fontsize=14, fontweight="bold", pad=20)
-    ax.grid(axis="x", alpha=0.3)
-    
-    # Add value labels on bars
-    for i, bar in enumerate(bars):
-        width = bar.get_width()
-        ax.text(width, bar.get_y() + bar.get_height()/2.,
-                f"{int(width)}", ha="left", va="center", fontsize=9, fontweight="bold")
-    
-    plt.tight_layout()
-    return fig
-
-
-def violin_plot_distribution(df, y="price", x="category"):
-    """Violin plot showing distribution and probability density"""
-    fig, ax = plt.subplots(figsize=(12, 6))
-    
-    # Prepare data
-    categories = df[x].unique()
-    
-    # Create violin plot
-    parts = ax.violinplot(
-        [df[df[x] == cat][y].dropna() for cat in categories],
-        positions=range(len(categories)),
-        showmeans=True,
-        showmedians=True,
-    )
-    
-    ax.set_xticks(range(len(categories)))
-    ax.set_xticklabels(categories, rotation=45, ha="right")
-    ax.set_xlabel(x.capitalize(), fontsize=11, fontweight="bold")
-    ax.set_ylabel(y.capitalize(), fontsize=11, fontweight="bold")
-    ax.set_title(f"Price Distribution by {x.capitalize()}", fontsize=14, fontweight="bold", pad=20)
-    ax.grid(axis="y", alpha=0.3)
-    
-    plt.tight_layout()
-    return fig
-
-
-def bonus_pair_plot(df, columns=None, max_size=5):
-    """Bonus: Pair plot showing relationships between multiple variables"""
-    if columns is None:
-        # Select numerical columns
-        columns = df.select_dtypes(include=[np.number]).columns[:max_size].tolist()
-    
-    fig = px.scatter_matrix(
-        df[columns],
-        title="Pair Plot - Relationships Between Variables",
-        labels={col: col.capitalize() for col in columns},
-        height=800,
-    )
-    return fig
-
-
-def bonus_bubble_chart(df):
-    """Bonus: Bubble chart with multiple dimensions"""
+    """Interactive horizontal bar chart for category counts."""
     if len(df) == 0:
-        fig, ax = plt.subplots(figsize=(16, 10))
-        ax.text(0.5, 0.5, "No data available", ha="center", va="center", transform=ax.transAxes, fontsize=14)
-        return fig
-    
+        return _empty_fig()
+
+    data = df[column].value_counts().head(top_n).reset_index()
+    data.columns = [column, "count"]
+
+    fig = px.bar(
+        data.sort_values("count"),
+        x="count",
+        y=column,
+        orientation="h",
+        color="count",
+        color_continuous_scale="Blues",
+        title=f"Top {top_n} {column.replace('_', ' ').title()} by Frequency",
+        labels={column: column.replace("_", " ").title(), "count": "Records"},
+        text="count",
+    )
+    fig.update_traces(textposition="outside")
+    fig.update_coloraxes(showscale=False)
+    fig.update_layout(**_LAYOUT, height=max(350, top_n * 30),
+                      xaxis_title="Number of Records", yaxis_title="")
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 10. Violin plot – distribution by category
+# ---------------------------------------------------------------------------
+def violin_plot_distribution(df, y="usdprice", x="category"):
+    """Interactive violin plot."""
+    if len(df) == 0:
+        return _empty_fig()
+
+    fig = px.violin(
+        df,
+        x=x,
+        y=y,
+        color=x,
+        color_discrete_sequence=COLORS,
+        box=True,
+        points="outliers",
+        title=f"Price Distribution by {x.replace('_', ' ').title()}",
+        labels={x: x.replace("_", " ").title(), y: "Price (USD)"},
+    )
+    fig.update_layout(**_LAYOUT, height=450,
+                      xaxis_tickangle=-30, showlegend=False)
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 11. Bonus – bubble chart
+# ---------------------------------------------------------------------------
+def bonus_bubble_chart(df):
+    """Interactive bubble chart: category × avg price, sized by record count."""
+    if len(df) == 0:
+        return _empty_fig()
+
+    df_agg = df.groupby(["commodity", "category"]).agg(
+        avg_price=("usdprice", "mean"),
+        count=("usdprice", "count"),
+    ).reset_index()
+
+    top_commodities = df_agg.groupby("commodity")["count"].sum().nlargest(12).index
+    df_agg = df_agg[df_agg["commodity"].isin(top_commodities)]
+
+    fig = px.scatter(
+        df_agg,
+        x="category",
+        y="avg_price",
+        size="count",
+        color="commodity",
+        color_discrete_sequence=COLORS,
+        hover_name="commodity",
+        hover_data={"count": True, "avg_price": ":.2f"},
+        title="Bubble Chart – Top Commodity Prices by Category\n(Size = Number of Records)",
+        labels={"category": "Category", "avg_price": "Avg Price (USD)", "count": "Records"},
+        size_max=60,
+    )
+    fig.update_layout(**_LAYOUT, height=500,
+                      xaxis_tickangle=-25,
+                      legend_title="Commodity")
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 12. Bonus – pair plot
+# ---------------------------------------------------------------------------
+def bonus_pair_plot(df, columns=None, max_size=5):
+    """Interactive scatter matrix (pair plot)."""
+    if columns is None:
+        columns = df.select_dtypes(include=[np.number]).columns[:max_size].tolist()
+
+    sample = df.sample(min(2000, len(df)), random_state=42) if len(df) > 2000 else df
+
+    fig = px.scatter_matrix(
+        sample,
+        dimensions=columns,
+        color="category" if "category" in df.columns else None,
+        color_discrete_sequence=COLORS,
+        title="Pair Plot – Relationships Between Numeric Variables",
+        labels={col: col.replace("_", " ").title() for col in columns},
+    )
+    fig.update_traces(diagonal_visible=False, marker_size=3, opacity=0.5)
+    fig.update_layout(**_LAYOUT, height=700)
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 13. Bonus – retail vs wholesale comparison
+# ---------------------------------------------------------------------------
+def bonus_retail_vs_wholesale(df):
+    """Interactive grouped bar chart comparing Retail vs Wholesale."""
+    if "Retail" not in df["pricetype"].values and "Wholesale" not in df["pricetype"].values:
+        return _empty_fig("No Retail or Wholesale data for selected filters.")
+
+    df_agg = (
+        df.groupby(["commodity", "pricetype"])["usdprice"]
+        .mean()
+        .reset_index()
+    )
+
+    # Keep top 15 commodities by avg retail price (or overall if retail missing)
+    top_comm = (
+        df_agg.groupby("commodity")["usdprice"]
+        .mean()
+        .nlargest(15)
+        .index
+    )
+    df_agg = df_agg[df_agg["commodity"].isin(top_comm)]
+
+    fig = px.bar(
+        df_agg,
+        x="commodity",
+        y="usdprice",
+        color="pricetype",
+        barmode="group",
+        color_discrete_map={"Retail": "#3498db", "Wholesale": "#e74c3c"},
+        title="Retail vs Wholesale Average Price Comparison (Top 15 Commodities)",
+        labels={"commodity": "Commodity", "usdprice": "Avg Price (USD)", "pricetype": "Price Type"},
+        text_auto=".2f",
+    )
+    fig.update_traces(textposition="outside", textfont_size=10)
+    fig.update_layout(**_LAYOUT, height=480,
+                      xaxis_tickangle=-35,
+                      legend_title="Price Type",
+                      uniformtext_minsize=8, uniformtext_mode="hide")
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# 14. World map – choropleth
+# ---------------------------------------------------------------------------
+def world_map_prices(df):
+    """Choropleth world map showing average USD price per country."""
+    if len(df) == 0:
+        return _empty_fig("No data available for map.")
+
+    df_country = (
+        df.groupby("countryiso3")
+        .agg(avg_price=("usdprice", "mean"), records=("usdprice", "count"))
+        .reset_index()
+    )
+
+    # Resolve full country names using pycountry (graceful fallback)
     try:
-        # Prepare aggregated data - focus on top commodities and categories
-        df_agg = df.groupby(["commodity", "category"]).agg({
-            "price": "mean",
-            "usdprice": "mean",
-            "market": "count"
-        }).reset_index()
-        df_agg.rename(columns={"market": "count"}, inplace=True)
-        
-        # Get top 8 commodities by frequency
-        top_commodities = df_agg.groupby("commodity")["count"].sum().nlargest(8).index.tolist()
-        df_agg = df_agg[df_agg["commodity"].isin(top_commodities)]
-        
-        # Get all categories
-        categories = sorted(df_agg["category"].unique())
-        
-        fig, ax = plt.subplots(figsize=(16, 10))
-        fig.patch.set_facecolor('white')
-        ax.set_facecolor('#f8f9fa')
-        
-        # Create numeric x positions for categories
-        x_positions = {cat: i for i, cat in enumerate(categories)}
-        colors = sns.color_palette(COLOR_PALETTE, len(top_commodities))
-        color_map = dict(zip(top_commodities, colors))
-        
-        # Plot bubble for each commodity
-        for commodity in top_commodities:
-            df_comm = df_agg[df_agg["commodity"] == commodity]
-            x_coords = [x_positions[cat] for cat in df_comm["category"]]
-            
-            scatter = ax.scatter(
-                x_coords,
-                df_comm["price"],
-                s=df_comm["count"] * 80,  # Much larger bubbles
-                alpha=0.7,
-                label=commodity,
-                color=color_map[commodity],
-                edgecolors="black",
-                linewidth=1.5
-            )
-            
-            # Add count annotations inside bubbles
-            for x, y, count in zip(x_coords, df_comm["price"], df_comm["count"]):
-                ax.text(x, y, str(int(count)), ha="center", va="center", 
-                       fontsize=8, fontweight="bold", color="white")
-        
-        # Set x-axis labels to category names
-        ax.set_xticks(range(len(categories)))
-        ax.set_xticklabels(categories, rotation=45, ha="right", fontsize=11, fontweight="bold")
-        ax.tick_params(axis="y", labelsize=11)
-        
-        ax.set_xlabel("Category", fontsize=13, fontweight="bold")
-        ax.set_ylabel("Average Price (USD)", fontsize=13, fontweight="bold")
-        ax.set_title("Bubble Chart: Top Commodity Prices by Category\n(Bubble size = Number of records | Number inside = Count)", 
-                    fontsize=15, fontweight="bold", pad=20)
-        
-        ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=11, 
-                 title="Commodity", title_fontsize=12, frameon=True, shadow=True)
-        ax.grid(alpha=0.2, linestyle="--", linewidth=0.5)
-        
-        # Set y-axis to start from 0
-        ax.set_ylim(bottom=0)
-        
-        plt.tight_layout()
-        return fig
-    except Exception as e:
-        fig, ax = plt.subplots(figsize=(16, 10))
-        ax.text(0.5, 0.5, f"Unable to display bubble chart: {str(e)}", ha="center", va="center", 
-               transform=ax.transAxes, fontsize=12)
-        return fig
+        import pycountry
+        def _name(iso3):
+            c = pycountry.countries.get(alpha_3=iso3)
+            return c.name if c else iso3
+        df_country["country_name"] = df_country["countryiso3"].apply(_name)
+    except Exception:
+        df_country["country_name"] = df_country["countryiso3"]
+
+    fig = px.choropleth(
+        df_country,
+        locations="countryiso3",
+        color="avg_price",
+        hover_name="country_name",
+        hover_data={"avg_price": ":.2f", "records": True, "countryiso3": False},
+        color_continuous_scale="YlOrRd",
+        title="Average Food Price (USD) by Country",
+        labels={"avg_price": "Avg Price (USD)", "records": "Records"},
+        projection="natural earth",
+    )
+    fig.update_layout(
+        **_LAYOUT,
+        height=520,
+        coloraxis_colorbar=dict(title="Avg Price (USD)"),
+        geo=dict(
+            showframe=False,
+            showcoastlines=True,
+            coastlinecolor="lightgrey",
+            bgcolor="rgba(0,0,0,0)",
+        ),
+    )
+    return fig
 
 
+# ---------------------------------------------------------------------------
+# 15. Market map – scatter on map
+# ---------------------------------------------------------------------------
+def market_map(df):
+    """Scatter map showing individual market locations coloured by category."""
+    if len(df) == 0 or "latitude" not in df.columns:
+        return _empty_fig("No geographic data available.")
+
+    df_markets = (
+        df.dropna(subset=["latitude", "longitude"])
+        .groupby(["market", "countryiso3", "category", "latitude", "longitude"])
+        .agg(avg_price=("usdprice", "mean"), records=("usdprice", "count"))
+        .reset_index()
+    )
+
+    fig = px.scatter_geo(
+        df_markets,
+        lat="latitude",
+        lon="longitude",
+        color="category",
+        color_discrete_sequence=COLORS,
+        hover_name="market",
+        hover_data={"avg_price": ":.2f", "records": True,
+                    "countryiso3": True, "latitude": False, "longitude": False},
+        size="records",
+        size_max=18,
+        projection="natural earth",
+        title="Market Locations & Average Prices",
+        labels={"category": "Category", "avg_price": "Avg Price (USD)"},
+    )
+    fig.update_layout(
+        **_LAYOUT,
+        height=520,
+        geo=dict(
+            showframe=False,
+            showcoastlines=True,
+            coastlinecolor="lightgrey",
+            bgcolor="rgba(0,0,0,0)",
+        ),
+        legend_title="Food Category",
+    )
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# KPI helper
+# ---------------------------------------------------------------------------
 def get_kpi_metrics(df):
-    """Calculate KPI metrics for display"""
-    metrics = {
+    """Calculate KPI metrics for display."""
+    if len(df) == 0:
+        return {k: 0 for k in [
+            "total_records", "avg_price", "min_price", "max_price",
+            "avg_usd_price", "unique_commodities", "unique_countries", "unique_markets",
+        ]}
+    return {
         "total_records": len(df),
         "avg_price": df["price"].mean(),
-        "min_price": df["price"].min(),
-        "max_price": df["price"].max(),
+        "min_price": df["usdprice"].min(),
+        "max_price": df["usdprice"].max(),
         "avg_usd_price": df["usdprice"].mean(),
         "unique_commodities": df["commodity"].nunique(),
         "unique_countries": df["countryiso3"].nunique(),
         "unique_markets": df["market"].nunique(),
     }
-    return metrics
-
-
-def bonus_retail_vs_wholesale(df):
-    """Bonus: Compare retail vs wholesale prices"""
-    if "Retail" not in df["pricetype"].values or "Wholesale" not in df["pricetype"].values:
-        fig, ax = plt.subplots(figsize=(12, 6))
-        ax.text(0.5, 0.5, "Insufficient data for comparison", 
-                ha='center', va='center', fontsize=12)
-        return fig
-    
-    df_comparison = df.groupby(["commodity", "pricetype"])["usdprice"].mean().reset_index()
-    df_pivot = df_comparison.pivot(index="commodity", columns="pricetype", values="usdprice")
-    
-    if df_pivot.shape[0] == 0:
-        fig, ax = plt.subplots(figsize=(12, 6))
-        ax.text(0.5, 0.5, "No comparison data available", 
-                ha='center', va='center', fontsize=12)
-        return fig
-    
-    df_pivot = df_pivot.sort_values("Retail", ascending=False).head(15)
-    
-    fig, ax = plt.subplots(figsize=(12, 6))
-    x = np.arange(len(df_pivot.index))
-    width = 0.35
-    
-    bars1 = ax.bar(x - width/2, df_pivot.get("Retail", [0]*len(df_pivot)), width, 
-                   label="Retail", color="#3498db", edgecolor="black", alpha=0.8)
-    bars2 = ax.bar(x + width/2, df_pivot.get("Wholesale", [0]*len(df_pivot)), width, 
-                   label="Wholesale", color="#e74c3c", edgecolor="black", alpha=0.8)
-    
-    ax.set_xlabel("Commodity", fontsize=11, fontweight="bold")
-    ax.set_ylabel("Average Price (USD)", fontsize=11, fontweight="bold")
-    ax.set_title("Retail vs Wholesale Price Comparison", fontsize=14, fontweight="bold", pad=20)
-    ax.set_xticks(x)
-    ax.set_xticklabels(df_pivot.index, rotation=45, ha="right")
-    ax.legend()
-    ax.grid(axis="y", alpha=0.3)
-    
-    plt.tight_layout()
-    return fig
