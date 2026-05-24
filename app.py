@@ -139,12 +139,16 @@ def _generate_insights(df):
     # Retail vs wholesale spread
     retail = df[df["pricetype"] == "Retail"]["usdprice"].mean()
     wholesale = df[df["pricetype"] == "Wholesale"]["usdprice"].mean()
-    if not np.isnan(retail) and not np.isnan(wholesale) and wholesale > 0:
+    if not np.isnan(retail) and not np.isnan(wholesale) and wholesale != 0:
         markup = (retail - wholesale) / wholesale * 100
-        insights.append(
-            f"🏪 **Retail vs Wholesale:** Retail prices are on average "
-            f"{'higher' if markup >= 0 else 'lower'} by {abs(markup):.1f}%"
-        )
+        direction = "higher" if markup > 0.1 else ("lower" if markup < -0.1 else "approximately equal")
+        if abs(markup) < 0.1:
+            insights.append("🏪 **Retail vs Wholesale:** Prices are approximately equal across both channels.")
+        else:
+            insights.append(
+                f"🏪 **Retail vs Wholesale:** Retail prices are on average "
+                f"{direction} by {abs(markup):.1f}%"
+            )
 
     return insights
 

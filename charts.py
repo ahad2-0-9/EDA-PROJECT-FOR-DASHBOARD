@@ -516,7 +516,7 @@ def get_kpi_metrics(df):
         ]}
     return {
         "total_records": len(df),
-        "avg_price": df["price"].mean(),
+        "avg_price": df["usdprice"].mean(),
         "min_price": df["usdprice"].min(),
         "max_price": df["usdprice"].max(),
         "avg_usd_price": df["usdprice"].mean(),
