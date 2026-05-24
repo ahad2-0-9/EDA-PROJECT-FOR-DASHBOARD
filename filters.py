@@ -48,9 +48,11 @@ def apply_filters(df):
 
     # Market Search Filter
     if st.session_state.get("market_search") and st.session_state["market_search"].strip():
-        search_term = st.session_state["market_search"].strip().lower()
+        search_term = st.session_state["market_search"].strip()
         filtered_df = filtered_df[
-            filtered_df["market"].str.lower().str.contains(search_term, na=False)
+            filtered_df["market"]
+            .astype(str)
+            .str.contains(search_term, case=False, na=False, regex=False)
         ]
 
     return filtered_df
@@ -64,6 +66,7 @@ def reset_filters():
     st.session_state["selected_commodities"] = ["All"]
     st.session_state["price_range"] = None
     st.session_state["market_search"] = ""
+    st.session_state.pop("market_search_input", None)
 
 
 def initialize_session_state(df):
@@ -177,12 +180,11 @@ def render_filters(df):
 
     # Market Search Filter
     st.sidebar.subheader("Search Market")
-    market_search = st.sidebar.text_input(
+    st.sidebar.text_input(
         "Search by market name:",
-        value="",
-        key="market_search_input",
+        value=st.session_state.get("market_search", ""),
+        key="market_search",
     )
-    st.session_state["market_search"] = market_search
 
     # Reset Filters Button
     col1, col2 = st.sidebar.columns(2)
