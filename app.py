@@ -99,6 +99,16 @@ def main():
     
     # Apply filters
     df_filtered = render_filters(df_original)
+
+    if df_filtered.empty:
+        st.warning("No records match the selected filters. Try widening your filter range.")
+        st.download_button(
+            "Download Full Dataset (CSV)",
+            df_original.to_csv(index=False).encode("utf-8"),
+            "wfp_food_prices_full_dataset.csv",
+            "text/csv",
+        )
+        st.stop()
     
     # Get KPI metrics
     metrics = get_kpi_metrics(df_filtered)
@@ -127,7 +137,7 @@ def main():
         st.metric(
             "Unique Commodities",
             f"{metrics['unique_commodities']}",
-            f"Categories: {metrics['unique_countries']}",
+            f"Countries: {metrics['unique_countries']}",
             border=True
         )
     
@@ -138,6 +148,25 @@ def main():
             f"Max: ${metrics['max_price']:.2f}",
             border=True
         )
+
+    st.markdown('<div class="section-header">Quick Insights</div>', unsafe_allow_html=True)
+    commodity_avg = df_filtered.groupby("commodity")["usdprice"].mean().dropna()
+    country_avg = df_filtered.groupby("countryiso3")["usdprice"].mean().dropna()
+    if not commodity_avg.empty and not country_avg.empty:
+        top_commodity = commodity_avg.idxmax()
+        top_commodity_price = commodity_avg.max()
+        lowest_country = country_avg.idxmin()
+        lowest_country_price = country_avg.min()
+        st.info(
+            f"Highest average-priced commodity: **{top_commodity}** (${top_commodity_price:.2f})\n\n"
+            f"Lowest average-priced country: **{lowest_country}** (${lowest_country_price:.2f})"
+        )
+    st.download_button(
+        "Download Filtered Data (CSV)",
+        df_filtered.to_csv(index=False).encode("utf-8"),
+        "wfp_food_prices_filtered.csv",
+        "text/csv",
+    )
     
     # Create tabs for different chart groups
     tab1, tab2, tab3, tab4, tab5 = st.tabs(

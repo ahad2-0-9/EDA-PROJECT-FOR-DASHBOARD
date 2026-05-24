@@ -44,7 +44,7 @@ def apply_filters(df):
     # Price Range Filter
     if st.session_state.get("price_range"):
         min_price, max_price = st.session_state["price_range"]
-        filtered_df = filtered_df[(filtered_df["price"] >= min_price) & (filtered_df["price"] <= max_price)]
+        filtered_df = filtered_df[(filtered_df["usdprice"] >= min_price) & (filtered_df["usdprice"] <= max_price)]
 
     # Market Search Filter
     if st.session_state.get("market_search") and st.session_state["market_search"].strip():
@@ -89,8 +89,8 @@ def initialize_session_state(df):
         st.session_state["selected_commodities"] = ["All"]
 
     if "price_range" not in st.session_state:
-        min_price = df["price"].min()
-        max_price = df["price"].max()
+        min_price = df["usdprice"].min()
+        max_price = df["usdprice"].max()
         st.session_state["price_range"] = (min_price, max_price)
 
     if "market_search" not in st.session_state:
@@ -167,8 +167,8 @@ def render_filters(df):
 
     # Price Range Filter
     st.sidebar.subheader("Price Range (USD)")
-    min_price = df["price"].min()
-    max_price = df["price"].max()
+    min_price = df["usdprice"].min()
+    max_price = df["usdprice"].max()
     price_range = st.sidebar.slider(
         "Select price range:",
         min_value=float(min_price),

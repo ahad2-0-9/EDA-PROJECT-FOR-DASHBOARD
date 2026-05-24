@@ -399,8 +399,8 @@ def get_kpi_metrics(df):
     metrics = {
         "total_records": len(df),
         "avg_price": df["price"].mean(),
-        "min_price": df["price"].min(),
-        "max_price": df["price"].max(),
+        "min_price": df["usdprice"].min(),
+        "max_price": df["usdprice"].max(),
         "avg_usd_price": df["usdprice"].mean(),
         "unique_commodities": df["commodity"].nunique(),
         "unique_countries": df["countryiso3"].nunique(),
