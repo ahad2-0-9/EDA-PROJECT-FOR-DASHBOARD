@@ -137,7 +137,7 @@ def main():
         st.metric(
             "Unique Commodities",
             f"{metrics['unique_commodities']}",
-            f"Countries: {metrics['unique_countries']}",
+            f"In {metrics['unique_countries']} countries",
             border=True
         )
     
